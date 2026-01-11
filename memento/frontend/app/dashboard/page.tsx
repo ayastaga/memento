@@ -193,7 +193,7 @@ export default function DashboardPage() {
             <Button onClick={() => router.push("/profile")} variant="outline">
               Profile
             </Button>
-            <Button variant="outline">Talk </Button>
+            <Button variant="outline">Talk now </Button>
 
             <Button onClick={logout} variant="outline">
               Logout
