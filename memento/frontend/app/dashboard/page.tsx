@@ -4,8 +4,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import Cookies from "js-cookie";
 import {
   Card,
@@ -14,135 +12,154 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import Image from "next/image";
-import { Users } from "lucide-react";
+import { Users, MessageSquare, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 const API_URL = "http://localhost:8080/api";
 
-interface Item {
+interface Message {
+  speaker: string;
+  text: string;
+}
+
+interface Conversation {
   _id: string;
-  title: string;
-  description: string;
+  summary: string;
+  transcript: Message[];
+  createdAt: string;
+}
+
+interface Person {
+  _id: string;
+  name: string;
+  relation: string;
+  summary: string;
+  photo: string;
   created_at: string;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, logout, isLoading } = useAuth();
-  const [items, setItems] = useState<Item[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
-  const [formData, setFormData] = useState({ title: "", description: "" });
 
   useEffect(() => {
     if (user) {
-      fetchItems();
+      fetchRecentConversations();
+      fetchRecentPeople();
     }
   }, [user]);
 
-  const fetchItems = async () => {
+  const fetchRecentConversations = async () => {
     const token = Cookies.get("token");
     try {
-      const response = await fetch(`${API_URL}/items`, {
+      const response = await fetch(`${API_URL}/conversations?limit=5`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
       if (response.ok) {
         const data = await response.json();
-        setItems(data);
+        setConversations(data);
       }
     } catch (error) {
-      console.error("Failed to fetch items:", error);
+      console.error("Failed to fetch conversations:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fetchRecentPeople = async () => {
     const token = Cookies.get("token");
-
     try {
-      const response = await fetch(`${API_URL}/items`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setFormData({ title: "", description: "" });
-        setIsCreateOpen(false);
-        fetchItems();
-      }
-    } catch (error) {
-      console.error("Failed to create item:", error);
-    }
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingItem) return;
-
-    const token = Cookies.get("token");
-
-    try {
-      const response = await fetch(`${API_URL}/items/${editingItem._id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        setFormData({ title: "", description: "" });
-        setEditingItem(null);
-        fetchItems();
-      }
-    } catch (error) {
-      console.error("Failed to update item:", error);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this item?")) return;
-
-    const token = Cookies.get("token");
-
-    try {
-      const response = await fetch(`${API_URL}/items/${id}`, {
-        method: "DELETE",
+      const response = await fetch(`${API_URL}/people`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
       if (response.ok) {
-        fetchItems();
+        const data = await response.json();
+        // Take only first 5 people
+        setPeople(data.slice(0, 5));
       }
     } catch (error) {
-      console.error("Failed to delete item:", error);
+      console.error("Failed to fetch people:", error);
     }
   };
 
-  const openEditDialog = (item: Item) => {
-    setEditingItem(item);
-    setFormData({ title: item.title, description: item.description });
+  const getConversationTitle = (conversation: Conversation) => {
+    if (!conversation.createdAt) return "Conversation";
+
+    try {
+      const date = new Date(conversation.createdAt);
+      if (isNaN(date.getTime())) return "Conversation";
+
+      return `Conversation – ${date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })}`;
+    } catch (error) {
+      return "Conversation";
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "Unknown date";
+
+    try {
+      const date = new Date(dateString);
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "Invalid date";
+      }
+
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - date.getTime());
+      const diffMinutes = Math.floor(diffTime / (1000 * 60));
+      const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      // Less than 1 hour ago
+      if (diffMinutes < 60) {
+        if (diffMinutes === 0) return "Just now";
+        if (diffMinutes === 1) return "1 minute ago";
+        return `${diffMinutes} minutes ago`;
+      }
+
+      // Less than 24 hours ago
+      if (diffHours < 24) {
+        if (diffHours === 1) return "1 hour ago";
+        return `${diffHours} hours ago`;
+      }
+
+      // Less than 7 days ago
+      if (diffDays < 7) {
+        if (diffDays === 1) return "Yesterday";
+        return `${diffDays} days ago`;
+      }
+
+      // Less than 30 days ago
+      if (diffDays < 30) {
+        const weeks = Math.floor(diffDays / 7);
+        if (weeks === 1) return "1 week ago";
+        return `${weeks} weeks ago`;
+      }
+
+      // Older - show formatted date
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "Invalid date";
+    }
   };
 
   if (isLoading || loading) {
@@ -173,10 +190,11 @@ export default function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <Button onClick={() => router.push("/people")} variant="outline">
-              <Users size={20} className="mr-2" />
-              People
+            <Button onClick={() => router.push("/profile")} variant="outline">
+              Profile
             </Button>
+            <Button variant="outline">Talk now </Button>
+
             <Button onClick={logout} variant="outline">
               Logout
             </Button>
@@ -185,191 +203,125 @@ export default function DashboardPage() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Conversations</h2>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>Create New Item</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Item</DialogTitle>
-                <DialogDescription>
-                  Add a new item to your collection
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="create-title">Title</Label>
-                  <Input
-                    id="create-title"
-                    value={formData.title}
-                    onChange={(e) =>
-                      setFormData({ ...formData, title: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="create-description">Description</Label>
-                  <Input
-                    id="create-description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                  />
-                </div>
-                <Button type="submit" className="w-full">
-                  Create
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+        {/* Recent Conversations Section */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-semibold flex items-center gap-2">
+              Recent Conversations
+            </h2>
+            <Button
+              onClick={() => router.push("/conversations")}
+              variant="outline"
+            >
+              View All
+              <ArrowRight size={16} className="ml-2" />
+            </Button>
+          </div>
+
+          {conversations.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <MessageSquare
+                  size={48}
+                  className="mx-auto mb-4 text-gray-400"
+                />
+                <p className="text-gray-500 text-lg">No conversations yet</p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Your conversations will appear here
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {conversations.map((conversation, index) => (
+                <Card
+                  key={conversation._id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() =>
+                    router.push(`/conversations/${conversation._id}`)
+                  }
+                >
+                  <CardHeader>
+                    <CardTitle className="text-lg line-clamp-1">
+                      {getConversationTitle(conversation)}
+                    </CardTitle>
+                    <CardDescription>
+                      {formatDate(conversation.createdAt)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-gray-600 line-clamp-3">
+                      {conversation.summary}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
 
-        {items.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-gray-500">
-              No items yet. Create your first item to get started!
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-              <Card key={item._id}>
-                <CardHeader>
-                  <CardTitle>{item.title}</CardTitle>
-                  <CardDescription>{item.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2">
-                    <Dialog
-                      open={editingItem?._id === item._id}
-                      onOpenChange={(open) => {
-                        if (!open) {
-                          setEditingItem(null);
-                          setFormData({ title: "", description: "" });
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditDialog(item)}
-                        >
-                          Edit
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Edit Item</DialogTitle>
-                          <DialogDescription>
-                            Make changes to your item
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleUpdate} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-title">Title</Label>
-                            <Input
-                              id="edit-title"
-                              value={formData.title}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  title: e.target.value,
-                                })
-                              }
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-description">
-                              Description
-                            </Label>
-                            <Input
-                              id="edit-description"
-                              value={formData.description}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  description: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <Button type="submit" className="w-full">
-                            Update
-                          </Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDelete(item._id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        {/* People Section */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-semibold flex items-center gap-2">
+              People You Know
+            </h2>
+            <Button onClick={() => router.push("/people")} variant="outline">
+              View All
+              <ArrowRight size={16} className="ml-2" />
+            </Button>
           </div>
-        )}
-      </div>
 
-      {/* User Profile Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h2 className="text-xl font-semibold mb-6">User Profile</h2>
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Name</p>
-                <p className="text-lg">{user?.name}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Email</p>
-                <p className="text-lg">{user?.email}</p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-500">Timezone</p>
-                <p className="text-lg">{user?.timezone || "Not set"}</p>
-              </div>
+          {people.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Users size={48} className="mx-auto mb-4 text-gray-400" />
+                <p className="text-gray-500 text-lg">No people added yet</p>
+                <p className="text-gray-400 text-sm mt-2">
+                  Add people to help you remember them
+                </p>
+                <Button
+                  onClick={() => router.push("/people/add")}
+                  className="mt-4"
+                >
+                  Add Your First Person
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {people.map((person) => (
+                <Card
+                  key={person._id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => router.push(`/people/${person._id}`)}
+                >
+                  <div className="flex items-center gap-4 p-4">
+                    <div className="relative w-16 h-16 flex-shrink-0">
+                      <Image
+                        src={person.photo}
+                        alt={person.name}
+                        fill
+                        className="rounded-full object-cover"
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg truncate">
+                        {person.name}
+                      </h3>
+                      <p className="text-sm text-gray-500 capitalize">
+                        {person.relation}
+                      </p>
+                      <p className="text-sm text-gray-600 line-clamp-2 mt-1">
+                        {person.summary}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
             </div>
-
-            {user?.primaryCaregiver && (
-              <div className="pt-4 border-t">
-                <h3 className="text-sm font-semibold mb-3">
-                  Primary Caregiver
-                </h3>
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Name</p>
-                    <p className="text-lg">{user.primaryCaregiver.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">
-                      Relationship
-                    </p>
-                    <p className="text-lg capitalize">
-                      {user.primaryCaregiver.relationship}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Contact</p>
-                    <p className="text-lg">{user.primaryCaregiver.contact}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
     </div>
   );
